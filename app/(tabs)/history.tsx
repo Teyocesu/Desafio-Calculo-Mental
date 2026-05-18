@@ -25,14 +25,23 @@ export default function HistoryScreen() {
       null,
     );
     const totalQuestions = sessions.reduce((total, session) => total + session.result.totalQuestions, 0);
-    const averageAccuracy = sessions.length
-      ? Math.round(sessions.reduce((total, session) => total + session.result.accuracy, 0) / sessions.length)
+    const totalCorrect = sessions.reduce((total, session) => total + session.result.correct, 0);
+    const totalAnsweredTime = sessions.reduce(
+      (total, session) =>
+        total +
+        session.result.averageResponseTimeMs *
+          (session.result.correct + session.result.incorrect),
+      0,
+    );
+    const totalAnswered = sessions.reduce(
+      (total, session) => total + session.result.correct + session.result.incorrect,
+      0,
+    );
+    const averageAccuracy = totalQuestions
+      ? Math.round((totalCorrect / totalQuestions) * 100)
       : 0;
-    const averageTime = sessions.length
-      ? Math.round(
-          sessions.reduce((total, session) => total + session.result.averageResponseTimeMs, 0) /
-            sessions.length,
-        )
+    const averageTime = totalAnswered
+      ? Math.round(totalAnsweredTime / totalAnswered)
       : 0;
 
     return {

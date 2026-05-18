@@ -1,15 +1,49 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { DEFAULT_CONFIG } from './engine';
-import { StoredSession, StoredSettings } from './types';
+import { Difficulty, GameMode, StoredSession, StoredSettings } from './types';
 
 export const SETTINGS_KEY = 'mentalCalc.settings.v1';
 export const SESSIONS_KEY = 'mentalCalc.sessions.v1';
 
+const DIFFICULTIES = new Set<Difficulty>(['easy', 'medium', 'hard']);
+const MODES = new Set<GameMode>(['classic', 'trueFalse', 'multipleChoice', 'timeAttack']);
+
+function sanitizeSettings(value: Partial<StoredSettings> | null | undefined): StoredSettings {
+  const questionCount = Number(value?.questionCount);
+
+  return {
+    difficulty: DIFFICULTIES.has(value?.difficulty as Difficulty)
+      ? (value?.difficulty as Difficulty)
+      : DEFAULT_CONFIG.difficulty,
+    mode: MODES.has(value?.mode as GameMode) ? (value?.mode as GameMode) : DEFAULT_CONFIG.mode,
+    questionCount: Number.isFinite(questionCount)
+      ? Math.min(25, Math.max(5, Math.round(questionCount)))
+      : DEFAULT_CONFIG.questionCount,
+    dynamicDifficulty:
+      typeof value?.dynamicDifficulty === 'boolean'
+        ? value.dynamicDifficulty
+        : DEFAULT_CONFIG.dynamicDifficulty,
+  };
+}
+
+function isStoredSession(value: unknown): value is StoredSession {
+  if (!value || typeof value !== 'object') return false;
+
+  const session = value as StoredSession;
+  return (
+    typeof session.id === 'string' &&
+    typeof session.dateIso === 'string' &&
+    typeof session.result?.score === 'number' &&
+    typeof session.result?.accuracy === 'number' &&
+    Array.isArray(session.records)
+  );
+}
+
 export async function loadSettings(): Promise<StoredSettings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...DEFAULT_CONFIG, ...JSON.parse(raw) } : DEFAULT_CONFIG;
+    return raw ? sanitizeSettings(JSON.parse(raw)) : DEFAULT_CONFIG;
   } catch {
     return DEFAULT_CONFIG;
   }
@@ -22,7 +56,8 @@ export async function saveSettings(settings: StoredSettings) {
 export async function loadSessions(): Promise<StoredSession[]> {
   try {
     const raw = await AsyncStorage.getItem(SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(isStoredSession).slice(0, 50) : [];
   } catch {
     return [];
   }

@@ -184,22 +184,29 @@ export default function GameScreen() {
     lockedRef.current = true;
     Keyboard.dismiss();
 
-    const responseTimeMs = timedOut
-      ? questionLimitMsRef.current
-      : Math.max(0, Date.now() - questionStartedAtRef.current);
+    const now = Date.now();
+    const elapsedQuestionMs = Math.max(0, now - questionStartedAtRef.current);
+    const elapsedRoundMs = Math.max(0, now - totalStartedAtRef.current);
+    const didTimeOut =
+      timedOut ||
+      elapsedQuestionMs >= questionLimitMsRef.current ||
+      (currentOperation.mode === 'timeAttack' && elapsedRoundMs >= totalLimitMsRef.current);
+    const responseTimeMs = didTimeOut
+      ? Math.min(questionLimitMsRef.current, elapsedQuestionMs)
+      : elapsedQuestionMs;
 
     const correct =
-      !timedOut &&
+      !didTimeOut &&
       (currentOperation.mode === 'trueFalse'
         ? selectedAnswer === currentOperation.isStatementTrue
         : selectedAnswer === currentOperation.correctAnswer);
 
-    const scoreDelta = scoreAnswer(correct, timedOut, responseTimeMs, questionLimitMsRef.current);
+    const scoreDelta = scoreAnswer(correct, didTimeOut, responseTimeMs, questionLimitMsRef.current);
     const record: QuestionRecord = {
       operation: currentOperation,
       selectedAnswer,
       correct,
-      timedOut,
+      timedOut: didTimeOut,
       responseTimeMs,
       scoreDelta,
     };
@@ -207,8 +214,8 @@ export default function GameScreen() {
     const nextRecords = [...recordsRef.current, record];
     setRecords(nextRecords);
     setFeedback({
-      type: timedOut ? 'timeout' : correct ? 'correct' : 'incorrect',
-      message: timedOut ? 'Tiempo agotado' : correct ? `+${scoreDelta}` : `${scoreDelta}`,
+      type: didTimeOut ? 'timeout' : correct ? 'correct' : 'incorrect',
+      message: didTimeOut ? 'Tiempo agotado' : correct ? `+${scoreDelta}` : `${scoreDelta}`,
     });
     continueOrFinish(nextRecords, record);
   }, [continueOrFinish, phase]);
