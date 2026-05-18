@@ -1,4 +1,5 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import type { RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -69,6 +70,7 @@ export default function GameScreen() {
   const totalStartedAtRef = useRef(0);
   const totalLimitMsRef = useRef(getTotalTimeLimit(DEFAULT_CONFIG));
   const lockedRef = useRef(false);
+  const answerInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     loadSettings().then((settings) => {
@@ -83,6 +85,22 @@ export default function GameScreen() {
   useEffect(() => {
     operationRef.current = operation;
   }, [operation]);
+
+  useEffect(() => {
+    if (
+      phase !== 'playing' ||
+      !operation ||
+      (operation.mode !== 'classic' && operation.mode !== 'timeAttack')
+    ) {
+      return undefined;
+    }
+
+    const focusId = setTimeout(() => {
+      answerInputRef.current?.focus();
+    }, 80);
+
+    return () => clearTimeout(focusId);
+  }, [operation, phase]);
 
   useEffect(() => {
     recordsRef.current = records;
@@ -304,6 +322,7 @@ export default function GameScreen() {
             remainingMs={remainingMs}
             totalProgress={totalProgress}
             totalRemainingMs={totalRemainingMs}
+            answerInputRef={answerInputRef}
             onAnswerChange={setAnswer}
             onNumericSubmit={submitNumericAnswer}
             onResolve={resolveCurrentQuestion}
@@ -420,6 +439,7 @@ function PlayingView({
   remainingMs,
   totalProgress,
   totalRemainingMs,
+  answerInputRef,
   onAnswerChange,
   onNumericSubmit,
   onResolve,
@@ -437,6 +457,7 @@ function PlayingView({
   remainingMs: number;
   totalProgress: number;
   totalRemainingMs: number;
+  answerInputRef: RefObject<TextInput | null>;
   onAnswerChange: (value: string) => void;
   onNumericSubmit: () => void;
   onResolve: (selectedAnswer: number | boolean | null, timedOut?: boolean) => void;
@@ -490,6 +511,8 @@ function PlayingView({
       {(operation.mode === 'classic' || operation.mode === 'timeAttack') && (
         <View style={styles.inputRow}>
           <TextInput
+            ref={answerInputRef}
+            autoFocus
             value={answer}
             onChangeText={onAnswerChange}
             keyboardType="numeric"
