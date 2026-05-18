@@ -9,6 +9,7 @@ Aplicacion movil desarrollada con Expo, React Native y TypeScript para el trabaj
 - Operaciones generadas dinamicamente segun dificultad.
 - Cantidad de iteraciones configurable para rondas no continuas.
 - Timer por operacion y timer total para modo contra reloj.
+- Registro de correctas, incorrectas, timeout, puntos y tiempo de respuesta por pregunta.
 - Puntaje por precision y velocidad:
   - Correcta rapida: +100 puntos.
   - Correcta dentro del tiempo: +70 puntos.
@@ -16,6 +17,7 @@ Aplicacion movil desarrollada con Expo, React Native y TypeScript para el trabaj
   - Sin respuesta: -50 puntos.
 - Historial, mejores puntajes y estadisticas persistidas localmente con AsyncStorage.
 - Estadisticas visuales sin conexion a internet ni backend.
+- Reinicio de ronda y borrado de historial con confirmacion en pantalla.
 
 ## Ejecutar
 

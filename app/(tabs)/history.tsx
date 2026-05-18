@@ -1,7 +1,7 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { DIFFICULTY_META, MODE_META } from '@/src/game/engine';
 import { clearSessions, loadSessions } from '@/src/game/storage';
@@ -11,9 +11,13 @@ const formatTime = (ms: number) => (ms ? `${(ms / 1000).toFixed(1)}s` : '0s');
 
 export default function HistoryScreen() {
   const [sessions, setSessions] = useState<StoredSession[]>([]);
+  const [pendingClear, setPendingClear] = useState(false);
 
   const refresh = useCallback(() => {
-    loadSessions().then(setSessions);
+    loadSessions().then((storedSessions) => {
+      setSessions(storedSessions);
+      if (storedSessions.length === 0) setPendingClear(false);
+    });
   }, []);
 
   useFocusEffect(refresh);
@@ -52,17 +56,11 @@ export default function HistoryScreen() {
     };
   }, [sessions]);
 
-  const confirmClear = () => {
-    Alert.alert('Borrar historial', 'Se eliminarán las rondas guardadas en este dispositivo.', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Borrar',
-        style: 'destructive',
-        onPress: () => {
-          clearSessions().then(() => setSessions([]));
-        },
-      },
-    ]);
+  const clearHistory = () => {
+    clearSessions().then(() => {
+      setSessions([]);
+      setPendingClear(false);
+    });
   };
 
   const topScores = useMemo(
@@ -147,11 +145,27 @@ export default function HistoryScreen() {
           )}
         </View>
 
-        {sessions.length > 0 && (
-          <Pressable style={styles.clearButton} onPress={confirmClear}>
+        {sessions.length > 0 && !pendingClear && (
+          <Pressable style={styles.clearButton} onPress={() => setPendingClear(true)}>
             <MaterialIcons name="delete-outline" size={20} color="#C94323" />
             <Text style={styles.clearButtonText}>Borrar historial</Text>
           </Pressable>
+        )}
+
+        {sessions.length > 0 && pendingClear && (
+          <View style={styles.confirmClearBox}>
+            <Text style={styles.confirmClearTitle}>¿Borrar historial?</Text>
+            <Text style={styles.confirmClearText}>Se eliminarán las rondas guardadas en este dispositivo.</Text>
+            <View style={styles.confirmClearActions}>
+              <Pressable style={styles.cancelButton} onPress={() => setPendingClear(false)}>
+                <Text style={styles.cancelButtonText}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={styles.confirmDeleteButton} onPress={clearHistory}>
+                <MaterialIcons name="delete-outline" size={19} color="#FFFFFF" />
+                <Text style={styles.confirmDeleteText}>Borrar</Text>
+              </Pressable>
+            </View>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -524,6 +538,64 @@ const styles = StyleSheet.create({
   clearButtonText: {
     color: '#C94323',
     fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  confirmClearBox: {
+    alignSelf: 'center',
+    backgroundColor: '#FFF1EC',
+    borderColor: '#FFD0BF',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 14,
+    width: '90%',
+  },
+  confirmClearTitle: {
+    color: '#8F2D12',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  confirmClearText: {
+    color: '#7B4A3A',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  confirmClearActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cancelButton: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#FFD0BF',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  cancelButtonText: {
+    color: '#8F2D12',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  confirmDeleteButton: {
+    alignItems: 'center',
+    backgroundColor: '#C94323',
+    borderRadius: 8,
+    flex: 1,
+    flexDirection: 'row',
+    gap: 7,
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  confirmDeleteText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0,
   },

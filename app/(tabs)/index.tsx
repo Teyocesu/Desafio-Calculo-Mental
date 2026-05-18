@@ -71,6 +71,7 @@ export default function GameScreen() {
   const totalLimitMsRef = useRef(getTotalTimeLimit(DEFAULT_CONFIG));
   const lockedRef = useRef(false);
   const answerInputRef = useRef<TextInput>(null);
+  const roundIdRef = useRef(0);
 
   useEffect(() => {
     loadSettings().then((settings) => {
@@ -185,8 +186,10 @@ export default function GameScreen() {
   const continueOrFinish = useCallback((nextRecords: QuestionRecord[], record: QuestionRecord) => {
     const shouldStopTimeAttack = config.mode === 'timeAttack' && (!record.correct || record.timedOut);
     const shouldStopRound = config.mode !== 'timeAttack' && nextRecords.length >= config.questionCount;
+    const activeRoundId = roundIdRef.current;
 
     setTimeout(() => {
+      if (activeRoundId !== roundIdRef.current) return;
       if (shouldStopTimeAttack || shouldStopRound) {
         finishRound(nextRecords).catch(() => undefined);
         return;
@@ -265,6 +268,7 @@ export default function GameScreen() {
     const totalLimit = getTotalTimeLimit(config);
     const now = Date.now();
 
+    roundIdRef.current += 1;
     saveSettings(config).catch(() => undefined);
     recordsRef.current = [];
     totalStartedAtRef.current = now;
@@ -325,6 +329,7 @@ export default function GameScreen() {
             answerInputRef={answerInputRef}
             onAnswerChange={setAnswer}
             onNumericSubmit={submitNumericAnswer}
+            onRestart={startRound}
             onResolve={resolveCurrentQuestion}
           />
         )}
@@ -442,6 +447,7 @@ function PlayingView({
   answerInputRef,
   onAnswerChange,
   onNumericSubmit,
+  onRestart,
   onResolve,
 }: {
   answer: string;
@@ -460,6 +466,7 @@ function PlayingView({
   answerInputRef: RefObject<TextInput | null>;
   onAnswerChange: (value: string) => void;
   onNumericSubmit: () => void;
+  onRestart: () => void;
   onResolve: (selectedAnswer: number | boolean | null, timedOut?: boolean) => void;
 }) {
   const progressLabel =
@@ -472,6 +479,10 @@ function PlayingView({
         <StatPill label="Puntaje" value={String(currentScore)} />
         <StatPill label="Tiempo" value={formatTime(remainingMs)} tone={questionProgress <= 0.25 ? 'danger' : 'default'} />
       </View>
+      <Pressable style={styles.resetRoundButton} onPress={onRestart}>
+        <MaterialIcons name="restart-alt" size={19} color="#0E7C7B" />
+        <Text style={styles.resetRoundText}>Reiniciar ronda</Text>
+      </Pressable>
 
       <ProgressBar progress={questionProgress} tone={questionProgress <= 0.25 ? 'danger' : 'primary'} />
       {config.mode === 'timeAttack' && (
@@ -606,6 +617,32 @@ function ResultView({
         </View>
       </View>
 
+      <View style={styles.detailBlock}>
+        <Text style={styles.chartTitle}>Detalle de respuestas</Text>
+        {records.map((record, index) => (
+          <View key={`${record.operation.id}-${index}`} style={styles.answerDetailRow}>
+            <View style={styles.answerDetailMain}>
+              <Text style={styles.answerDetailTitle}>
+                {index + 1}. {formatOperationForReview(record.operation)}
+              </Text>
+              <Text style={styles.answerDetailMeta}>
+                Tu respuesta: {formatSelectedAnswer(record.selectedAnswer)} · Correcta: {formatCorrectAnswer(record.operation)}
+              </Text>
+            </View>
+            <View style={styles.answerDetailStats}>
+              <Text
+                style={[
+                  styles.answerDetailScore,
+                  record.scoreDelta < 0 && styles.answerDetailScoreDanger,
+                ]}>
+                {record.scoreDelta > 0 ? `+${record.scoreDelta}` : record.scoreDelta}
+              </Text>
+              <Text style={styles.answerDetailTime}>{formatTime(record.responseTimeMs)}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
       <View style={styles.actionRow}>
         <Pressable style={styles.secondaryButton} onPress={onConfigure}>
           <MaterialIcons name="settings" size={20} color="#0E7C7B" />
@@ -618,6 +655,22 @@ function ResultView({
       </View>
     </View>
   );
+}
+
+function formatOperationForReview(operation: Operation) {
+  if (operation.mode === 'trueFalse') return `${operation.expression} = ${operation.proposedAnswer}`;
+  return operation.expression;
+}
+
+function formatCorrectAnswer(operation: Operation) {
+  if (operation.mode === 'trueFalse') return operation.isStatementTrue ? 'Verdadero' : 'Falso';
+  return String(operation.correctAnswer);
+}
+
+function formatSelectedAnswer(value: number | boolean | null) {
+  if (value === null) return 'Sin respuesta';
+  if (typeof value === 'boolean') return value ? 'Verdadero' : 'Falso';
+  return String(value);
 }
 
 function SectionHeader({ icon, title }: { icon: keyof typeof MaterialIcons.glyphMap; title: string }) {
@@ -1006,6 +1059,24 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
+  resetRoundButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    backgroundColor: '#E8F6F3',
+    borderColor: '#98D8CF',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 42,
+    paddingHorizontal: 12,
+  },
+  resetRoundText: {
+    color: '#0E7C7B',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
   progressTrack: {
     backgroundColor: '#E8EEF4',
     borderRadius: 8,
@@ -1235,6 +1306,55 @@ const styles = StyleSheet.create({
   scoreBar: {
     borderRadius: 4,
     width: '100%',
+  },
+  detailBlock: {
+    gap: 9,
+  },
+  answerDetailRow: {
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderColor: '#D8E0E8',
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 11,
+  },
+  answerDetailMain: {
+    flex: 1,
+    gap: 4,
+  },
+  answerDetailTitle: {
+    color: '#17212B',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  answerDetailMeta: {
+    color: '#607080',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  answerDetailStats: {
+    alignItems: 'flex-end',
+    minWidth: 58,
+  },
+  answerDetailScore: {
+    color: '#0E7C7B',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  answerDetailScoreDanger: {
+    color: '#C94323',
+  },
+  answerDetailTime: {
+    color: '#607080',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    marginTop: 3,
   },
   actionRow: {
     flexDirection: 'row',

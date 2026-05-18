@@ -195,8 +195,10 @@ async function main() {
       'Cantidad de iteraciones configurable en rondas no continuas.',
       'Timer por operacion y timer total para contra reloj.',
       'Validacion de respuestas, feedback visual y progresion automatica.',
+      'Registro de correctas, incorrectas, timeout, puntos y tiempo de respuesta por pregunta.',
       'Puntaje por precision y velocidad.',
       'Historial, mejores puntajes y estadisticas visuales con persistencia local.',
+      'Reinicio de ronda y borrado de historial con confirmacion en pantalla.',
     ].map((item) => paragraph(item, { bullet: true, after: 4 })),
     heading('Modos de juego', 1),
     table(
@@ -224,6 +226,7 @@ async function main() {
       'Motor del juego separado en src/game/engine.ts, con generacion de operaciones, calculo de tiempo y puntaje.',
       'Tipos compartidos en src/game/types.ts para dificultad, modo, operaciones, rondas y sesiones guardadas.',
       'Persistencia aislada en src/game/storage.ts usando AsyncStorage.',
+      'Historial con confirmacion propia en la interfaz para funcionar igual en web y mobile.',
       'UI en espanol, con controles tactiles, iconos, feedback animado y visualizaciones simples sin librerias externas de graficos.',
     ].map((item) => paragraph(item, { bullet: true, after: 4 })),
     heading('Persistencia local', 1),
