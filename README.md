@@ -38,4 +38,3 @@ npm start
 ## Entrega
 
 El documento `Descripcion_Funcionalidades.docx` resume las funcionalidades implementadas y decisiones de diseno.
-La carpeta `screenshots/` incluye capturas de inicio, los cuatro modos, feedback, resultado, historial y borrado de datos.
