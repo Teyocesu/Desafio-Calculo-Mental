@@ -9,10 +9,16 @@ const outputPath = path.join(root, 'Descripcion_Funcionalidades.docx');
 
 const screenshots = [
   ['Inicio y configuracion', '01-inicio.png'],
-  ['Modo verdadero / falso', '02-juego-verdadero-falso.png'],
-  ['Feedback de respuesta', '03-feedback.png'],
-  ['Resultado de ronda', '04-resultado.png'],
-  ['Historial y estadisticas', '05-historial.png'],
+  ['Cuenta regresiva animada', '02-countdown.png'],
+  ['Modo clasico', '03-modo-clasico.png'],
+  ['Modo verdadero / falso', '04-modo-verdadero-falso.png'],
+  ['Modo multiple choice', '05-modo-multiple-choice.png'],
+  ['Modo contra reloj', '06-modo-contra-reloj.png'],
+  ['Feedback de respuesta', '07-feedback.png'],
+  ['Resultado de ronda con detalle por pregunta', '08-resultado.png'],
+  ['Historial y estadisticas', '09-historial.png'],
+  ['Confirmacion de borrado de historial', '10-borrar-historial.png'],
+  ['Historial vacio luego de borrar datos', '11-historial-vacio.png'],
 ];
 
 const escapeXml = (value) =>
@@ -199,6 +205,10 @@ async function main() {
       'Puntaje por precision y velocidad.',
       'Historial, mejores puntajes y estadisticas visuales con persistencia local.',
       'Reinicio de ronda y borrado de historial con confirmacion en pantalla.',
+      'Cuenta regresiva animada 3-2-1 al iniciar o reiniciar una ronda.',
+      'Sonidos locales para acierto, error y timeout, configurables desde el inicio.',
+      'Animaciones de feedback, transicion de operaciones y pulso de puntaje.',
+      'Graficos avanzados de evolucion, tiempos, distribucion por modo/dificultad y rachas.',
     ].map((item) => paragraph(item, { bullet: true, after: 4 })),
     heading('Modos de juego', 1),
     table(
@@ -227,6 +237,7 @@ async function main() {
       'Tipos compartidos en src/game/types.ts para dificultad, modo, operaciones, rondas y sesiones guardadas.',
       'Persistencia aislada en src/game/storage.ts usando AsyncStorage.',
       'Historial con confirmacion propia en la interfaz para funcionar igual en web y mobile.',
+      'Efectos de sonido con archivos locales y sin permisos de microfono o conexion externa.',
       'UI en espanol, con controles tactiles, iconos, feedback animado y visualizaciones simples sin librerias externas de graficos.',
     ].map((item) => paragraph(item, { bullet: true, after: 4 })),
     heading('Persistencia local', 1),
@@ -240,7 +251,7 @@ async function main() {
       'npx tsc --noEmit: verificacion TypeScript sin errores.',
       'npm run lint: lint de Expo sin errores.',
       'Servidor web local en http://127.0.0.1:8082 verificado con respuesta HTTP 200.',
-      'Capturas automatizadas con Chrome headless para inicio, juego, feedback, resultado e historial.',
+      'Capturas automatizadas con Chrome headless para los cuatro modos, feedback, resultado, historial y borrado de datos.',
     ].map((item) => paragraph(item, { bullet: true, after: 4 })),
   ].join('');
 

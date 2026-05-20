@@ -16,8 +16,11 @@ Aplicacion movil desarrollada con Expo, React Native y TypeScript para el trabaj
   - Incorrecta: -30 puntos.
   - Sin respuesta: -50 puntos.
 - Historial, mejores puntajes y estadisticas persistidas localmente con AsyncStorage.
-- Estadisticas visuales sin conexion a internet ni backend.
+- Estadisticas visuales avanzadas: evolucion de puntaje, precision, tiempos, distribucion por modo/dificultad y racha correcta.
 - Reinicio de ronda y borrado de historial con confirmacion en pantalla.
+- Cuenta regresiva animada 3-2-1 antes de iniciar o reiniciar una ronda.
+- Sonidos locales para acierto, error y timeout, con opcion de activar/desactivar.
+- Animaciones de feedback, transicion de operaciones y pulso de puntaje.
 
 ## Ejecutar
 
@@ -35,3 +38,4 @@ npm start
 ## Entrega
 
 El documento `Descripcion_Funcionalidades.docx` resume las funcionalidades implementadas y decisiones de diseno.
+La carpeta `screenshots/` incluye capturas de inicio, los cuatro modos, feedback, resultado, historial y borrado de datos.

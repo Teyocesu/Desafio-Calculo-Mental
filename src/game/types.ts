@@ -9,6 +9,7 @@ export type RoundConfig = {
   mode: GameMode;
   questionCount: number;
   dynamicDifficulty: boolean;
+  soundEnabled: boolean;
 };
 
 export type Operation = {

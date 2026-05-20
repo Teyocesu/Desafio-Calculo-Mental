@@ -1,9 +1,12 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useAudioPlayer } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Keyboard,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -35,6 +38,9 @@ import {
   RoundConfig,
   StoredSession,
 } from '@/src/game/types';
+import correctSound from '@/assets/sounds/correct.wav';
+import incorrectSound from '@/assets/sounds/incorrect.wav';
+import timeoutSound from '@/assets/sounds/timeout.wav';
 
 type Phase = 'setup' | 'playing' | 'result';
 
@@ -45,6 +51,7 @@ type FeedbackState = {
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
 const MODES: GameMode[] = ['classic', 'trueFalse', 'multipleChoice', 'timeAttack'];
+const COUNTDOWN_STEP_MS = 720;
 
 const formatSeconds = (ms: number) => `${Math.ceil(ms / 1000)}s`;
 const formatTime = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
@@ -61,8 +68,13 @@ export default function GameScreen() {
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [inputError, setInputError] = useState('');
   const [lastSession, setLastSession] = useState<StoredSession | null>(null);
+  const [countdownValue, setCountdownValue] = useState<number | null>(null);
 
   const feedbackScale = useRef(new Animated.Value(0)).current;
+  const countdownScale = useRef(new Animated.Value(0.7)).current;
+  const countdownOpacity = useRef(new Animated.Value(0)).current;
+  const operationMotion = useRef(new Animated.Value(1)).current;
+  const scoreScale = useRef(new Animated.Value(1)).current;
   const operationRef = useRef<Operation | null>(null);
   const recordsRef = useRef<QuestionRecord[]>([]);
   const questionStartedAtRef = useRef(0);
@@ -72,6 +84,23 @@ export default function GameScreen() {
   const lockedRef = useRef(false);
   const answerInputRef = useRef<TextInput>(null);
   const roundIdRef = useRef(0);
+  const countdownTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const nextQuestionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const correctPlayer = useAudioPlayer(correctSound);
+  const incorrectPlayer = useAudioPlayer(incorrectSound);
+  const timeoutPlayer = useAudioPlayer(timeoutSound);
+
+  const clearScheduledTimers = useCallback(() => {
+    countdownTimeoutsRef.current.forEach(clearTimeout);
+    countdownTimeoutsRef.current = [];
+
+    if (nextQuestionTimeoutRef.current) {
+      clearTimeout(nextQuestionTimeoutRef.current);
+      nextQuestionTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearScheduledTimers, [clearScheduledTimers]);
 
   useEffect(() => {
     loadSettings().then((settings) => {
@@ -86,6 +115,45 @@ export default function GameScreen() {
   useEffect(() => {
     operationRef.current = operation;
   }, [operation]);
+
+  useEffect(() => {
+    if (!operation) return;
+
+    operationMotion.setValue(0);
+    Animated.spring(operationMotion, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 18,
+      bounciness: 7,
+    }).start();
+  }, [operation, operationMotion]);
+
+  useEffect(() => {
+    if (countdownValue === null) return;
+
+    countdownScale.setValue(0.72);
+    countdownOpacity.setValue(0);
+    Animated.parallel([
+      Animated.spring(countdownScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 18,
+        bounciness: 10,
+      }),
+      Animated.sequence([
+        Animated.timing(countdownOpacity, {
+          toValue: 1,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.timing(countdownOpacity, {
+          toValue: 0.9,
+          duration: COUNTDOWN_STEP_MS - 160,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [countdownOpacity, countdownScale, countdownValue]);
 
   useEffect(() => {
     if (
@@ -131,6 +199,50 @@ export default function GameScreen() {
       }),
     ]).start();
   }, [feedback, feedbackScale]);
+
+  useEffect(() => {
+    if (records.length === 0) return;
+
+    Animated.sequence([
+      Animated.spring(scoreScale, {
+        toValue: 1.08,
+        useNativeDriver: true,
+        speed: 18,
+        bounciness: 8,
+      }),
+      Animated.spring(scoreScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 18,
+        bounciness: 6,
+      }),
+    ]).start();
+  }, [records.length, scoreScale]);
+
+  const playFeedbackCue = useCallback((type: FeedbackType) => {
+    if (!config.soundEnabled) return;
+
+    const player =
+      type === 'correct' ? correctPlayer : type === 'timeout' ? timeoutPlayer : incorrectPlayer;
+    Promise.resolve(player.seekTo(0))
+      .then(() => player.play())
+      .catch(() => undefined);
+
+    if (Platform.OS !== 'web') {
+      const feedbackType =
+        type === 'correct'
+          ? Haptics.NotificationFeedbackType.Success
+          : type === 'timeout'
+            ? Haptics.NotificationFeedbackType.Warning
+            : Haptics.NotificationFeedbackType.Error;
+      Haptics.notificationAsync(feedbackType).catch(() => undefined);
+    }
+  }, [config.soundEnabled, correctPlayer, incorrectPlayer, timeoutPlayer]);
+
+  useEffect(() => {
+    if (!feedback) return;
+    playFeedbackCue(feedback.type);
+  }, [feedback, playFeedbackCue]);
 
   const currentScore = useMemo(
     () => records.reduce((total, record) => total + record.scoreDelta, 0),
@@ -188,7 +300,9 @@ export default function GameScreen() {
     const shouldStopRound = config.mode !== 'timeAttack' && nextRecords.length >= config.questionCount;
     const activeRoundId = roundIdRef.current;
 
-    setTimeout(() => {
+    if (nextQuestionTimeoutRef.current) clearTimeout(nextQuestionTimeoutRef.current);
+    nextQuestionTimeoutRef.current = setTimeout(() => {
+      nextQuestionTimeoutRef.current = null;
       if (activeRoundId !== roundIdRef.current) return;
       if (shouldStopTimeAttack || shouldStopRound) {
         finishRound(nextRecords).catch(() => undefined);
@@ -266,18 +380,38 @@ export default function GameScreen() {
 
   const startRound = () => {
     const totalLimit = getTotalTimeLimit(config);
-    const now = Date.now();
+    const nextRoundId = roundIdRef.current + 1;
 
-    roundIdRef.current += 1;
+    clearScheduledTimers();
+    roundIdRef.current = nextRoundId;
+    lockedRef.current = true;
+    operationRef.current = null;
     saveSettings(config).catch(() => undefined);
     recordsRef.current = [];
-    totalStartedAtRef.current = now;
     totalLimitMsRef.current = totalLimit;
     setRecords([]);
     setLastSession(null);
+    setOperation(null);
+    setFeedback(null);
+    setAnswer('');
+    setInputError('');
     setPhase('playing');
     setTotalRemainingMs(totalLimit);
-    setTimeout(() => startQuestion(0), 0);
+    setCountdownValue(3);
+
+    countdownTimeoutsRef.current = [2, 1].map((value, index) =>
+      setTimeout(() => {
+        if (roundIdRef.current === nextRoundId) setCountdownValue(value);
+      }, COUNTDOWN_STEP_MS * (index + 1)),
+    );
+
+    countdownTimeoutsRef.current.push(setTimeout(() => {
+      if (roundIdRef.current !== nextRoundId) return;
+      countdownTimeoutsRef.current = [];
+      setCountdownValue(null);
+      totalStartedAtRef.current = Date.now();
+      startQuestion(0);
+    }, COUNTDOWN_STEP_MS * 3));
   };
 
   const submitNumericAnswer = () => {
@@ -319,11 +453,13 @@ export default function GameScreen() {
             feedback={feedback}
             feedbackScale={feedbackScale}
             inputError={inputError}
+            operationMotion={operationMotion}
             operation={operation}
             questionLimitMs={questionLimitMs}
             questionProgress={questionProgress}
             records={records}
             remainingMs={remainingMs}
+            scoreScale={scoreScale}
             totalProgress={totalProgress}
             totalRemainingMs={totalRemainingMs}
             answerInputRef={answerInputRef}
@@ -343,6 +479,22 @@ export default function GameScreen() {
           />
         )}
       </ScrollView>
+
+      {countdownValue !== null && (
+        <View style={[styles.countdownOverlay, styles.noPointerEvents]}>
+          <Animated.View
+            style={[
+              styles.countdownCard,
+              {
+                opacity: countdownOpacity,
+                transform: [{ scale: countdownScale }],
+              },
+            ]}>
+            <Text style={styles.countdownLabel}>Preparado</Text>
+            <Text style={styles.countdownNumber}>{countdownValue}</Text>
+          </Animated.View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -416,10 +568,24 @@ function SetupView({
         />
       </View>
 
+      <View style={styles.settingRow}>
+        <View>
+          <Text style={styles.label}>Sonidos</Text>
+          <Text style={styles.mutedText}>Efectos para acierto, error y timeout</Text>
+        </View>
+        <Switch
+          value={config.soundEnabled}
+          onValueChange={(soundEnabled) => onChange({ soundEnabled })}
+          trackColor={{ false: '#CBD5E1', true: '#FFD37A' }}
+          thumbColor={config.soundEnabled ? '#E4572E' : '#F8FAFC'}
+        />
+      </View>
+
       <View style={styles.configSummary}>
         <StatPill label="Tiempo por operación" value={formatSeconds(DIFFICULTY_META[config.difficulty].timeLimitMs)} />
         <StatPill label="Tiempo contra reloj" value={formatSeconds(getTotalTimeLimit(config))} />
         <StatPill label="Modo activo" value={MODE_META[config.mode].label} />
+        <StatPill label="Sonido" value={config.soundEnabled ? 'Activo' : 'Silencio'} />
       </View>
 
       <Pressable style={styles.primaryButton} onPress={onStart} accessibilityRole="button">
@@ -437,11 +603,13 @@ function PlayingView({
   feedback,
   feedbackScale,
   inputError,
+  operationMotion,
   operation,
   questionLimitMs,
   questionProgress,
   records,
   remainingMs,
+  scoreScale,
   totalProgress,
   totalRemainingMs,
   answerInputRef,
@@ -456,11 +624,13 @@ function PlayingView({
   feedback: FeedbackState | null;
   feedbackScale: Animated.Value;
   inputError: string;
+  operationMotion: Animated.Value;
   operation: Operation;
   questionLimitMs: number;
   questionProgress: number;
   records: QuestionRecord[];
   remainingMs: number;
+  scoreScale: Animated.Value;
   totalProgress: number;
   totalRemainingMs: number;
   answerInputRef: RefObject<TextInput | null>;
@@ -476,7 +646,9 @@ function PlayingView({
     <View style={styles.section}>
       <View style={styles.gameTopBar}>
         <StatPill label="Pregunta" value={progressLabel} />
-        <StatPill label="Puntaje" value={String(currentScore)} />
+        <Animated.View style={{ flexGrow: 1, transform: [{ scale: scoreScale }] }}>
+          <StatPill label="Puntaje" value={String(currentScore)} />
+        </Animated.View>
         <StatPill label="Tiempo" value={formatTime(remainingMs)} tone={questionProgress <= 0.25 ? 'danger' : 'default'} />
       </View>
       <Pressable style={styles.resetRoundButton} onPress={onRestart}>
@@ -492,7 +664,21 @@ function PlayingView({
         </View>
       )}
 
-      <View style={styles.operationPanel}>
+      <Animated.View
+        style={[
+          styles.operationPanel,
+          {
+            opacity: operationMotion,
+            transform: [
+              {
+                translateY: operationMotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [12, 0],
+                }),
+              },
+            ],
+          },
+        ]}>
         <Text style={styles.operationLabel}>{MODE_META[config.mode].label}</Text>
         <Text style={styles.operationText}>
           {operation.mode === 'trueFalse'
@@ -500,7 +686,7 @@ function PlayingView({
             : operation.expression}
         </Text>
         <Text style={styles.operationMeta}>Límite actual {formatTime(questionLimitMs)}</Text>
-      </View>
+      </Animated.View>
 
       {operation.mode === 'trueFalse' && (
         <View style={styles.answerGrid}>
@@ -599,22 +785,11 @@ function ResultView({
       </View>
 
       <View style={styles.chartBlock}>
-        <Text style={styles.chartTitle}>Evolución de la ronda</Text>
-        <View style={styles.scoreBars}>
-          {records.map((record, index) => (
-            <View key={`${record.operation.id}-${index}`} style={styles.scoreBarSlot}>
-              <View
-                style={[
-                  styles.scoreBar,
-                  {
-                    height: Math.max(12, Math.min(72, Math.abs(record.scoreDelta) * 0.7)),
-                    backgroundColor: record.scoreDelta > 0 ? '#0E7C7B' : '#E4572E',
-                  },
-                ]}
-              />
-            </View>
-          ))}
+        <View style={styles.chartTitleRow}>
+          <Text style={styles.chartTitle}>Resumen visual</Text>
+          <Text style={styles.chartHint}>verde correcta · rojo error · amarillo timeout</Text>
         </View>
+        <RoundSimpleChart records={records} />
       </View>
 
       <View style={styles.detailBlock}>
@@ -653,6 +828,61 @@ function ResultView({
           <Text style={styles.primaryButtonText}>Otra ronda</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function RoundSimpleChart({ records }: { records: QuestionRecord[] }) {
+  const correct = records.filter((record) => record.correct).length;
+  const incorrect = records.filter((record) => !record.correct && !record.timedOut).length;
+  const timedOut = records.filter((record) => record.timedOut).length;
+  const sortedTimes = records.map((record) => record.responseTimeMs).sort((a, b) => a - b);
+  const fastest = sortedTimes[0] ?? 0;
+  const slowest = sortedTimes[sortedTimes.length - 1] ?? 0;
+  const average = records.reduce((total, record) => total + record.responseTimeMs, 0) / Math.max(1, records.length);
+
+  return (
+    <View style={styles.compactChart}>
+      <View style={styles.outcomeDots}>
+        {records.map((record, index) => (
+          <View
+            key={`${record.operation.id}-dot-${index}`}
+            style={[
+              styles.outcomeDot,
+              record.timedOut
+                ? styles.outcomeDotTimeout
+                : record.correct
+                  ? styles.outcomeDotCorrect
+                  : styles.outcomeDotIncorrect,
+            ]}
+          />
+        ))}
+      </View>
+      <View style={styles.simpleMetricsRow}>
+        <SimpleMetric label="Correctas" value={String(correct)} />
+        <SimpleMetric label="Incorrectas" value={String(incorrect)} />
+        <SimpleMetric label="Timeout" value={String(timedOut)} />
+      </View>
+      <View style={styles.simpleMetricsRow}>
+        <SimpleMetric label="Rápida" value={formatTime(fastest)} />
+        <SimpleMetric label="Promedio" value={formatTime(average)} />
+        <SimpleMetric label="Lenta" value={formatTime(slowest)} />
+      </View>
+    </View>
+  );
+}
+
+function SimpleMetric({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.simpleMetric}>
+      <Text style={styles.simpleMetricLabel}>{label}</Text>
+      <Text style={styles.simpleMetricValue}>{value}</Text>
     </View>
   );
 }
@@ -855,6 +1085,44 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     padding: 16,
     width: '90%',
+  },
+  countdownOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(23, 33, 43, 0.58)',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  noPointerEvents: {
+    pointerEvents: 'none',
+  },
+  countdownCard: {
+    alignItems: 'center',
+    backgroundColor: '#17212B',
+    borderColor: '#98D8CF',
+    borderRadius: 8,
+    borderWidth: 2,
+    justifyContent: 'center',
+    minHeight: 190,
+    minWidth: 190,
+    padding: 24,
+  },
+  countdownLabel: {
+    color: '#98D8CF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textTransform: 'uppercase',
+  },
+  countdownNumber: {
+    color: '#FFFFFF',
+    fontSize: 92,
+    fontWeight: '900',
+    letterSpacing: 0,
+    lineHeight: 106,
   },
   sectionHeader: {
     alignItems: 'center',
@@ -1279,33 +1547,79 @@ const styles = StyleSheet.create({
   chartBlock: {
     gap: 12,
   },
+  chartTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'space-between',
+  },
   chartTitle: {
     color: '#17212B',
     fontSize: 16,
     fontWeight: '900',
     letterSpacing: 0,
   },
-  scoreBars: {
-    alignItems: 'flex-end',
+  chartHint: {
+    color: '#607080',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  compactChart: {
     backgroundColor: '#F5F7FA',
     borderColor: '#D8E0E8',
     borderRadius: 8,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: 5,
-    minHeight: 102,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+    gap: 10,
+    padding: 12,
   },
-  scoreBarSlot: {
+  outcomeDots: {
     alignItems: 'center',
-    flex: 1,
-    justifyContent: 'flex-end',
-    minWidth: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
   },
-  scoreBar: {
-    borderRadius: 4,
-    width: '100%',
+  outcomeDot: {
+    borderRadius: 6,
+    height: 12,
+    width: 12,
+  },
+  outcomeDotCorrect: {
+    backgroundColor: '#0E7C7B',
+  },
+  outcomeDotIncorrect: {
+    backgroundColor: '#E4572E',
+  },
+  outcomeDotTimeout: {
+    backgroundColor: '#F5B841',
+  },
+  simpleMetricsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  simpleMetric: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D8E0E8',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minWidth: 82,
+    padding: 8,
+  },
+  simpleMetricLabel: {
+    color: '#607080',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  simpleMetricValue: {
+    color: '#17212B',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginTop: 2,
   },
   detailBlock: {
     gap: 9,

@@ -47,11 +47,26 @@ export default function HistoryScreen() {
     const averageTime = totalAnswered
       ? Math.round(totalAnsweredTime / totalAnswered)
       : 0;
+    const longestStreak = sessions.reduce(
+      (bestStreak, session) => Math.max(bestStreak, getLongestStreak(session.records)),
+      0,
+    );
+    const modeRows = buildCountRows(
+      sessions.map((session) => session.config.mode),
+      (mode) => MODE_META[mode].label,
+    );
+    const difficultyRows = buildCountRows(
+      sessions.map((session) => session.config.difficulty),
+      (difficulty) => DIFFICULTY_META[difficulty].label,
+    );
 
     return {
       averageAccuracy,
       averageTime,
       best,
+      difficultyRows,
+      longestStreak,
+      modeRows,
       totalQuestions,
     };
   }, [sessions]);
@@ -102,10 +117,31 @@ export default function HistoryScreen() {
           {sessions.length === 0 ? (
             <EmptyState />
           ) : (
-            <>
+            <View style={styles.visualGrid}>
               <TrendChart title="Puntaje por ronda" sessions={sessions.slice(0, 8)} metric="score" />
               <TrendChart title="Precisión por ronda" sessions={sessions.slice(0, 8)} metric="accuracy" />
               <TrendChart title="Tiempo promedio" sessions={sessions.slice(0, 8)} metric="time" />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <MaterialIcons name="insights" size={22} color="#E4572E" />
+            <Text style={styles.sectionTitle}>Estadísticas avanzadas</Text>
+          </View>
+          {sessions.length === 0 ? (
+            <EmptyState compact />
+          ) : (
+            <>
+              <View style={styles.summaryGrid}>
+                <StatBlock label="Mejor puntaje" value={String(stats.best?.result.score ?? 0)} />
+                <StatBlock label="Modo más jugado" value={stats.modeRows[0]?.label ?? '-'} />
+                <StatBlock label="Dificultad frecuente" value={stats.difficultyRows[0]?.label ?? '-'} />
+                <StatBlock label="Racha correcta" value={String(stats.longestStreak)} />
+              </View>
+              <DistributionChart title="Partidas por modo" rows={stats.modeRows} />
+              <DistributionChart title="Partidas por dificultad" rows={stats.difficultyRows} />
             </>
           )}
         </View>
@@ -172,6 +208,35 @@ export default function HistoryScreen() {
   );
 }
 
+function DistributionChart({ rows, title }: { rows: { label: string; value: number }[]; title: string }) {
+  const total = Math.max(rows.reduce((sum, row) => sum + row.value, 0), 1);
+  const max = Math.max(...rows.map((row) => row.value), 1);
+
+  return (
+    <View style={styles.distributionBlock}>
+      <Text style={styles.chartTitle}>{title}</Text>
+      <View style={styles.distributionBars}>
+        {rows.map((row) => {
+          const height = `${Math.max(12, (row.value / max) * 100)}%` as const;
+
+          return (
+            <View key={row.label} style={styles.distributionBarItem}>
+              <View style={styles.distributionBarFrame}>
+                <View style={[styles.distributionBarFill, { height }]} />
+              </View>
+              <Text style={styles.distributionValue}>{row.value}</Text>
+              <Text style={styles.distributionPercent}>{Math.round((row.value / total) * 100)}%</Text>
+              <Text style={styles.distributionLabel} numberOfLines={2}>
+                {row.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function TrendChart({
   metric,
   sessions,
@@ -182,12 +247,41 @@ function TrendChart({
   title: string;
 }) {
   const chronological = [...sessions].reverse();
-  const values = chronological.map((session) => {
-    if (metric === 'score') return Math.max(0, session.result.score);
-    if (metric === 'accuracy') return session.result.accuracy;
-    return session.result.averageResponseTimeMs / 1000;
+  const rows = chronological.map((session, index) => {
+    const value =
+      metric === 'score'
+        ? Math.max(0, session.result.score)
+        : metric === 'accuracy'
+          ? session.result.accuracy
+          : session.result.averageResponseTimeMs / 1000;
+    return {
+      label: `Ronda ${index + 1}`,
+      value,
+      display:
+        metric === 'accuracy'
+          ? `${Math.round(value)}%`
+          : metric === 'time'
+            ? `${value.toFixed(1)}s`
+            : `${Math.round(value)} pts`,
+    };
   });
-  const max = Math.max(...values, metric === 'accuracy' ? 100 : 1);
+  const average = rows.reduce((sum, row) => sum + row.value, 0) / Math.max(1, rows.length);
+  const best = rows.reduce(
+    (currentBest, row) =>
+      metric === 'time'
+        ? row.value < currentBest.value
+          ? row
+          : currentBest
+        : row.value > currentBest.value
+          ? row
+          : currentBest,
+    rows[0],
+  );
+  const last = rows[rows.length - 1];
+  const formatMetric = (value: number) =>
+    metric === 'accuracy' ? `${Math.round(value)}%` : metric === 'time' ? `${value.toFixed(1)}s` : `${Math.round(value)} pts`;
+  const dotStyle =
+    metric === 'accuracy' ? styles.trendDotAccuracy : metric === 'time' ? styles.trendDotTime : styles.trendDotScore;
 
   return (
     <View style={styles.chartBlock}>
@@ -195,19 +289,26 @@ function TrendChart({
         <Text style={styles.chartTitle}>{title}</Text>
         <Text style={styles.chartHint}>{metric === 'accuracy' ? '%' : metric === 'time' ? 's' : 'pts'}</Text>
       </View>
-      <View style={styles.chartBars}>
-        {values.map((value, index) => (
-          <View key={`${metric}-${index}`} style={styles.barSlot}>
-            <View
-              style={[
-                styles.barFill,
-                metric === 'accuracy' && styles.barFillAccuracy,
-                metric === 'time' && styles.barFillTime,
-                { height: `${Math.max(8, (value / max) * 100)}%` },
-              ]}
-            />
+      <View style={styles.trendCard}>
+        <View style={styles.trendDots}>
+          {rows.map((row) => (
+            <View key={`${metric}-${row.label}`} style={[styles.trendDot, dotStyle]} />
+          ))}
+        </View>
+        <View style={styles.trendStatsRow}>
+          <View style={styles.trendStat}>
+            <Text style={styles.trendStatLabel}>Última</Text>
+            <Text style={styles.trendStatValue}>{last?.display ?? '-'}</Text>
           </View>
-        ))}
+          <View style={styles.trendStat}>
+            <Text style={styles.trendStatLabel}>{metric === 'time' ? 'Menor' : 'Mejor'}</Text>
+            <Text style={styles.trendStatValue}>{best ? best.display : '-'}</Text>
+          </View>
+          <View style={styles.trendStat}>
+            <Text style={styles.trendStatLabel}>Promedio</Text>
+            <Text style={styles.trendStatValue}>{formatMetric(average)}</Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -267,6 +368,33 @@ function formatDate(dateIso: string) {
     dateStyle: 'short',
     timeStyle: 'short',
   });
+}
+
+function buildCountRows<T extends string>(items: T[], getLabel: (item: T) => string) {
+  const counts = items.reduce<Record<T, number>>((accumulator, item) => {
+    accumulator[item] = (accumulator[item] ?? 0) + 1;
+    return accumulator;
+  }, {} as Record<T, number>);
+
+  return Object.entries(counts)
+    .map(([key, value]) => ({ label: getLabel(key as T), value: Number(value) }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+}
+
+function getLongestStreak(records: StoredSession['records']) {
+  let current = 0;
+  let best = 0;
+
+  for (const record of records) {
+    if (record.correct) {
+      current += 1;
+      best = Math.max(best, current);
+    } else {
+      current = 0;
+    }
+  }
+
+  return best;
 }
 
 const styles = StyleSheet.create({
@@ -358,8 +486,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0,
   },
+  visualGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
   chartBlock: {
+    flexBasis: '31%',
+    flexGrow: 1,
     gap: 8,
+    minWidth: 150,
   },
   chartHeader: {
     alignItems: 'center',
@@ -378,34 +514,118 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
   },
-  chartBars: {
+  trendCard: {
+    backgroundColor: '#F5F7FA',
+    borderColor: '#D8E0E8',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
+  },
+  trendDots: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    minHeight: 16,
+  },
+  trendDot: {
+    borderRadius: 5,
+    height: 10,
+    width: 10,
+  },
+  trendDotScore: {
+    backgroundColor: '#0E7C7B',
+  },
+  trendDotAccuracy: {
+    backgroundColor: '#F5B841',
+  },
+  trendDotTime: {
+    backgroundColor: '#E4572E',
+  },
+  trendStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  trendStat: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1E8EF',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minWidth: 68,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  trendStatLabel: {
+    color: '#607080',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  trendStatValue: {
+    color: '#17212B',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0,
+    marginTop: 3,
+  },
+  distributionBlock: {
+    gap: 10,
+  },
+  distributionBars: {
     alignItems: 'flex-end',
     backgroundColor: '#F5F7FA',
     borderColor: '#D8E0E8',
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 7,
-    height: 104,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    gap: 10,
+    justifyContent: 'space-around',
+    minHeight: 160,
+    padding: 12,
   },
-  barSlot: {
+  distributionBarItem: {
     alignItems: 'center',
     flex: 1,
-    height: '100%',
+    gap: 4,
     justifyContent: 'flex-end',
+    minWidth: 72,
   },
-  barFill: {
-    backgroundColor: '#0E7C7B',
-    borderRadius: 5,
+  distributionBarFrame: {
+    alignItems: 'center',
+    height: 74,
+    justifyContent: 'flex-end',
     width: '100%',
   },
-  barFillAccuracy: {
-    backgroundColor: '#F5B841',
+  distributionBarFill: {
+    backgroundColor: '#0E7C7B',
+    borderRadius: 8,
+    maxWidth: 34,
+    minHeight: 10,
+    width: '58%',
   },
-  barFillTime: {
-    backgroundColor: '#E4572E',
+  distributionLabel: {
+    color: '#17212B',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    minHeight: 28,
+    textAlign: 'center',
+  },
+  distributionValue: {
+    color: '#0E7C7B',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  distributionPercent: {
+    color: '#607080',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textAlign: 'center',
   },
   scoreRow: {
     alignItems: 'center',

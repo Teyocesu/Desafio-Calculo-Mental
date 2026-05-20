@@ -5,6 +5,7 @@ const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 const appUrl = 'http://127.0.0.1:8082';
 const debugPort = 9224;
 const outDir = new URL('../screenshots/', import.meta.url);
+const countdownMs = 2350;
 
 let nextId = 1;
 const pending = new Map();
@@ -76,6 +77,48 @@ async function clickText(socket, text) {
   );
 }
 
+async function waitForText(socket, text, timeoutMs = 12000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const exists = await evaluate(
+      socket,
+      `
+      (() => {
+        const targetText = ${JSON.stringify(text)};
+        return [...document.querySelectorAll('body *')].some((item) =>
+          (item.innerText || item.textContent || '').trim().includes(targetText)
+        );
+      })()
+    `,
+    );
+
+    if (exists) return;
+    await delay(300);
+  }
+
+  throw new Error('No aparecio el texto esperado: ' + text);
+}
+
+async function scrollTextIntoView(socket, text) {
+  await evaluate(
+    socket,
+    `
+    (() => {
+      const targetText = ${JSON.stringify(text)};
+      const nodes = [...document.querySelectorAll('div, span, button, [role="button"]')];
+      const match = nodes
+        .map((item) => ({ item, text: (item.innerText || item.textContent || '').trim() }))
+        .filter(({ text }) => text.includes(targetText))
+        .sort((a, b) => a.text.length - b.text.length)[0]?.item;
+      if (!match) throw new Error('No se encontro para desplazar: ' + targetText);
+      match.scrollIntoView({ block: 'center', inline: 'nearest' });
+      return true;
+    })()
+  `,
+  );
+}
+
 async function answerTrueFalse(socket) {
   const shouldClickTrue = await evaluate(
     socket,
@@ -93,6 +136,20 @@ async function answerTrueFalse(socket) {
   `,
   );
   await clickText(socket, shouldClickTrue ? 'Verdadero' : 'Falso');
+}
+
+async function goToSetup(socket) {
+  await send(socket, 'Page.navigate', { url: appUrl });
+  await waitForText(socket, 'Iniciar ronda');
+}
+
+async function captureMode(socket, label, name) {
+  await goToSetup(socket);
+  await clickText(socket, label);
+  await delay(350);
+  await clickText(socket, 'Iniciar ronda');
+  await delay(countdownMs);
+  await screenshot(socket, name);
 }
 
 async function main() {
@@ -141,19 +198,28 @@ async function main() {
       userAgent:
         'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
     });
-    await send(socket, 'Page.navigate', { url: appUrl });
-    await delay(3500);
+    await goToSetup(socket);
+    await delay(2300);
     await screenshot(socket, '01-inicio');
 
+    await clickText(socket, 'Iniciar ronda');
+    await delay(220);
+    await screenshot(socket, '02-countdown');
+
+    await captureMode(socket, 'Clásico', '03-modo-clasico');
+    await captureMode(socket, 'Verdadero / falso', '04-modo-verdadero-falso');
+    await captureMode(socket, 'Multiple choice', '05-modo-multiple-choice');
+    await captureMode(socket, 'Contra reloj', '06-modo-contra-reloj');
+
+    await goToSetup(socket);
     await clickText(socket, 'Verdadero / falso');
     await delay(350);
     await clickText(socket, 'Iniciar ronda');
-    await delay(900);
-    await screenshot(socket, '02-juego-verdadero-falso');
+    await delay(countdownMs);
 
     await answerTrueFalse(socket);
     await delay(180);
-    await screenshot(socket, '03-feedback');
+    await screenshot(socket, '07-feedback');
     await delay(700);
 
     for (let index = 1; index < 10; index += 1) {
@@ -161,11 +227,19 @@ async function main() {
       await delay(760);
     }
     await delay(900);
-    await screenshot(socket, '04-resultado');
+    await screenshot(socket, '08-resultado');
 
     await clickText(socket, 'Historial');
     await delay(2500);
-    await screenshot(socket, '05-historial');
+    await screenshot(socket, '09-historial');
+    await clickText(socket, 'Borrar historial');
+    await delay(350);
+    await scrollTextIntoView(socket, '¿Borrar historial?');
+    await delay(250);
+    await screenshot(socket, '10-borrar-historial');
+    await clickText(socket, 'Borrar');
+    await delay(700);
+    await screenshot(socket, '11-historial-vacio');
     socket.close();
   } finally {
     chrome.kill('SIGTERM');

@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG: RoundConfig = {
   mode: 'classic',
   questionCount: 10,
   dynamicDifficulty: true,
+  soundEnabled: true,
 };
 
 export const DIFFICULTY_META: Record<

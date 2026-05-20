@@ -24,6 +24,10 @@ function sanitizeSettings(value: Partial<StoredSettings> | null | undefined): St
       typeof value?.dynamicDifficulty === 'boolean'
         ? value.dynamicDifficulty
         : DEFAULT_CONFIG.dynamicDifficulty,
+    soundEnabled:
+      typeof value?.soundEnabled === 'boolean'
+        ? value.soundEnabled
+        : DEFAULT_CONFIG.soundEnabled,
   };
 }
 
@@ -36,8 +40,16 @@ function isStoredSession(value: unknown): value is StoredSession {
     typeof session.dateIso === 'string' &&
     typeof session.result?.score === 'number' &&
     typeof session.result?.accuracy === 'number' &&
+    typeof session.result?.totalQuestions === 'number' &&
     Array.isArray(session.records)
   );
+}
+
+function sanitizeSession(session: StoredSession): StoredSession {
+  return {
+    ...session,
+    config: sanitizeSettings(session.config),
+  };
 }
 
 export async function loadSettings(): Promise<StoredSettings> {
@@ -57,7 +69,7 @@ export async function loadSessions(): Promise<StoredSession[]> {
   try {
     const raw = await AsyncStorage.getItem(SESSIONS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter(isStoredSession).slice(0, 50) : [];
+    return Array.isArray(parsed) ? parsed.filter(isStoredSession).map(sanitizeSession).slice(0, 50) : [];
   } catch {
     return [];
   }
