@@ -38,3 +38,7 @@ npm start
 ## Entrega
 
 El documento `Descripcion_Funcionalidades.docx` resume las funcionalidades implementadas y decisiones de diseno.
+
+## Licencia
+
+Distribuido bajo la [licencia MIT](LICENSE).
