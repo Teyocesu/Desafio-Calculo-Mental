@@ -1,12 +1,12 @@
-# Contributing
+# Contribuciones
 
-Thanks for contributing to Desafio Calculo Mental.
+Gracias por contribuir a Desafio Calculo Mental.
 
-Before opening a pull request, keep the change focused, avoid committing local Expo or device-specific files, and verify the app starts correctly:
+Antes de abrir un pull request, mantené el cambio enfocado, evitá subir archivos locales de Expo o específicos de un dispositivo y verificá que la aplicación inicie correctamente:
 
 ```bash
 npm install
 npm run web
 ```
 
-Describe the feature or fix, the devices or browsers tested, and any changes to persistence or game scoring rules.
+Describí la funcionalidad o corrección, los dispositivos o navegadores probados y cualquier cambio en la persistencia o en las reglas de puntuación.

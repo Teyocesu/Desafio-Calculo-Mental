@@ -1,3 +1,3 @@
-# Security policy
+# Política de seguridad
 
-Report security concerns privately to the repository owner through GitHub. Do not include personal data from app users or device backups in a public issue.
+Reportá problemas de seguridad de forma privada al propietario del repositorio a través de GitHub. No incluyas datos personales de usuarios de la aplicación ni copias de seguridad de dispositivos en un issue público.
